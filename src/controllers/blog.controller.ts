@@ -15,7 +15,7 @@ export const createBlog = async (req: Request, res: Response) => {
         userId,
       },
       include: {
-        author: true, // Include author details
+        author: true,
       },
     });
 
@@ -31,7 +31,7 @@ export const getAllBlogs = async (_req: Request, res: Response) => {
   try {
     const blogs = await db.blog.findMany({
       include: {
-        author: true, // Include author details
+        author: true,
       },
     });
 
