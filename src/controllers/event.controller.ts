@@ -17,7 +17,7 @@ export const createEvent = async (req: Request, res: Response) => {
         userId,
       },
       include: {
-        createdBy: true, //this is the author relation that we created in the schema
+        createdBy: true,
       },
     });
 

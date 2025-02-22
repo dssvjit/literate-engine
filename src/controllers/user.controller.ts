@@ -4,7 +4,6 @@ import { db } from "../lib/config/prisma.config";
 import { ApiResponse } from "../utils/ApiResponse";
 
 export const createUser = async (req: Request, res: Response) => {
-  //   res.json("User Controller");
   try {
     const { name, email, imageUrl, oAuthId, role } = req.body;
     if (
@@ -41,7 +40,7 @@ export const createUser = async (req: Request, res: Response) => {
     res.status(400).json(new ApiError(400, "Cannot create user", error));
   }
 };
-//get all users
+
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
     const users = await db.user.findMany();
@@ -52,7 +51,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
     res.status(500).json(new ApiError(500, "Error fetching users", error));
   }
 };
-//get user by ID
+
 export const getUserById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -70,7 +69,6 @@ export const getUserById = async (req: Request, res: Response) => {
   }
 };
 
-// Update a user by ID
 export const updateUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -87,7 +85,6 @@ export const updateUser = async (req: Request, res: Response) => {
   }
 };
 
-// Delete a user by ID
 export const deleteUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
