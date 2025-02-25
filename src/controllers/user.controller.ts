@@ -1,32 +1,40 @@
-import { ApiError } from "../utils/ApiError";
 import { Request, Response } from "express";
 import { db } from "../lib/config/prisma.config";
+import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
+import { userSchema, userIdSchema } from "../lib/schema/user.schema";
 
 export const createUser = async (req: Request, res: Response) => {
-  try {
-    const { name, email, imageUrl, oAuthId, role } = req.body;
-    if (
-      [name, email, imageUrl, oAuthId].some((field) => field?.trim() === "")
-    ) {
-      throw new ApiError(400, "All fields are required");
-    }
+  const { success, data } = userSchema.safeParse(req.body);
 
-    const userExists = await db.user.findUnique({
-      where: { email },
-    });
+  if (!success) {
+    res.status(400).json(new ApiError(400, "Enter correct format of data"));
+    return;
+  }
+
+  const { name, email, imageUrl, role } = data;
+
+  try {
+    const userExists = await db.user.findUnique({ where: { email } });
+
     if (userExists) {
-      return res
+      res
         .status(400)
         .json(new ApiError(400, "User with this email already exists"));
+      return;
     }
+
     const user = await db.user.create({
-      data: { name, email, imageUrl, role },
+      data: {
+        name,
+        email,
+        imageUrl,
+        role: role.toLocaleLowerCase() === "USER" ? "User" : "Admin", //this line needs to be checked again
+      },
       select: {
         name: true,
         email: true,
         imageUrl: true,
-        refreshToken: true,
         role: true,
         createdAt: true,
         updatedAt: true,
@@ -53,12 +61,19 @@ export const getAllUsers = async (req: Request, res: Response) => {
 };
 
 export const getUserById = async (req: Request, res: Response) => {
+  const { success, data } = userIdSchema.safeParse(req.params);
+
+  if (!success) {
+    res.status(400).json(new ApiError(400, "Invalid user ID"));
+    return;
+  }
+
   try {
-    const { id } = req.params;
-    const user = await db.user.findUnique({ where: { id } });
+    const user = await db.user.findUnique({ where: { id: data.id } });
 
     if (!user) {
-      return res.status(404).json(new ApiError(404, "User not found"));
+      res.status(404).json(new ApiError(404, "User not found"));
+      return;
     }
 
     res
@@ -70,13 +85,17 @@ export const getUserById = async (req: Request, res: Response) => {
 };
 
 export const updateUser = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { name, email, imageUrl, role } = req.body;
+  const { success, data } = userIdSchema.safeParse(req.params);
 
-    const updatedUser = await prisma.user.update({
-      where: { id },
-      data: { name, email, imageUrl, role },
+  if (!success) {
+    res.status(400).json(new ApiError(400, "Invalid request data"));
+    return;
+  }
+  const { id } = data;
+  try {
+    const updatedUser = await db.user.update({
+      where: { id: data.id },
+      data: req.body,
     });
 
     res.status(200).json(new ApiResponse(200, updatedUser, "User updated"));
@@ -86,11 +105,19 @@ export const updateUser = async (req: Request, res: Response) => {
 };
 
 export const deleteUser = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    await prisma.user.delete({ where: { id } });
+  const { success, data } = userIdSchema.safeParse(req.params);
 
-    res.status(200).json(new ApiResponse(200, "User deleted"));
+  if (!success) {
+    res.status(400).json(new ApiError(400, "Invalid user ID"));
+    return;
+  }
+
+  try {
+    await db.user.delete({ where: { id: data.id } });
+
+    res
+      .status(200)
+      .json(new ApiResponse(200, null, "User deleted successfully"));
   } catch (error) {
     res.status(500).json(new ApiError(500, "Error deleting user", error));
   }
