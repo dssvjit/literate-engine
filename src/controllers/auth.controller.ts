@@ -79,6 +79,86 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
   }
 };
 
+export const loginWithGithub = async (req, res) => {
+  const { code } = req.query;
+
+  if (!code) {
+    return res.status(400).json(new ApiResponse(400, null, "Invalid code"));
+  }
+
+  try {
+    const tokenResponse = await axios.post(
+      "https://github.com/login/oauth/access_token",
+      {
+        client_id: process.env.GITHUB_CLIENT_ID,
+        client_secret: process.env.GITHUB_CLIENT_SECRET,
+        code,
+      },
+      { headers: { Accept: "application/json" } }
+    );
+
+    console.log("TOKEN RESPONSE: ", tokenResponse.data.access_token);
+
+    const accessToken = tokenResponse.data.access_token as string;
+
+    const userResponse = await axios.get("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!userResponse.data) {
+      res.status(400).json(new ApiResponse(400, null, "Invalid user data"));
+      return;
+    }
+
+    const { name, email, avatar_url } = userResponse.data;
+
+    let user = await db.user.findUnique({
+      where: {
+        email,
+      },
+    });
+
+    if (!user) {
+      const refreshToken = jwt.sign({ email }, JWT_SECRET, {
+        expiresIn: "30d",
+      });
+
+      user = await db.user.create({
+        data: {
+          email,
+          name,
+          imageUrl: avatar_url,
+          role: "User",
+          refreshToken: refreshToken,
+        },
+      });
+    }
+
+    const payload = {
+      id: user.id,
+      email,
+    };
+
+    const newAccessToken = jwt.sign(payload, JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          user,
+          accessToken: "Bearer " + newAccessToken,
+        },
+        "Successfully logged in with Google"
+      )
+    );
+  } catch (error) {
+    console.log("LOGIN WITH GITHUB ERROR: ", error);
+    res.status(500).json(new ApiResponse(500, null, "An error occurred"));
+  }
+};
+
 export const refreshAccessToken = async (req: Request, res: Response) => {
   const {
     success,
