@@ -69,6 +69,35 @@ export const getUserById = async (req: Request, res: Response) => {
   }
 };
 
+export const getUserDetails = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  try {
+    const user = await db.user.findUnique({ where: { id: userId } });
+
+    if (!user) {
+      res.status(404).json(new ApiError(404, "User not found"));
+
+      return;
+    }
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          name: user.name,
+          email: user.email,
+          imageUrl: user.imageUrl,
+          role: user.role,
+        },
+        "User fetched successfully"
+      )
+    );
+  } catch (error) {
+    res.status(500).json(new ApiError(500, "Error fetching user", error));
+  }
+};
+
 export const updateUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
