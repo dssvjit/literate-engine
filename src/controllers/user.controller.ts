@@ -5,10 +5,18 @@ import { ApiResponse } from "../utils/ApiResponse";
 import { userSchema, userIdSchema } from "../lib/schema/user.schema";
 
 export const createUser = async (req: Request, res: Response) => {
-  const { success, data } = userSchema.safeParse(req.body);
+  const { success, data, error } = userSchema.safeParse(req.body);
 
   if (!success) {
-    res.status(400).json(new ApiError(400, "Enter correct format of data"));
+    res
+      .status(400)
+      .json(
+        new ApiError(
+          400,
+          "Enter correct format of data",
+          error.format?.() || error.message
+        )
+      );
     return;
   }
 
@@ -29,9 +37,10 @@ export const createUser = async (req: Request, res: Response) => {
         name,
         email,
         imageUrl,
-        role: role.toLocaleLowerCase() === "USER" ? "User" : "Admin", //this line needs to be checked again
+        role: role.toLocaleLowerCase() === "USER" ? "User" : "Admin",
       },
       select: {
+        id: true,
         name: true,
         email: true,
         imageUrl: true,
@@ -45,7 +54,9 @@ export const createUser = async (req: Request, res: Response) => {
       .status(201)
       .json(new ApiResponse(201, user, "User created successfully"));
   } catch (error) {
-    res.status(400).json(new ApiError(400, "Cannot create user", error));
+    res
+      .status(500)
+      .json(new ApiError(500, "Cannot create user", error.message));
   }
 };
 
@@ -56,7 +67,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
       .status(200)
       .json(new ApiResponse(200, users, "Users fetched successfully"));
   } catch (error) {
-    res.status(500).json(new ApiError(500, "Error fetching users", error));
+    res.status(500).json(new ApiResponse(500, "Error fetching users", error));
   }
 };
 
