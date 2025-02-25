@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { db } from "../lib/config/prisma.config";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
-import { blogSchema, blogIdSchema } from "../lib/schema/user.schema";
+import { blogSchema, blogIdSchema } from "../lib/schema/blog.schema";
 
 export const createBlog = async (req: Request, res: Response) => {
   const { success, data } = blogSchema.safeParse(req.body);

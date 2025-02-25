@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { db } from "../lib/config/prisma.config";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
+import { eventIdSchema } from "../lib/schema/event.schema";
 
 export const createEvent = async (req: Request, res: Response) => {
   try {
@@ -29,41 +30,45 @@ export const createEvent = async (req: Request, res: Response) => {
   }
 };
 
+// Get All Events
 export const getAllEvents = async (_req: Request, res: Response) => {
   try {
-    const events = await db.event.findMany({
-      include: {
-        createdBy: true,
-      },
-    });
+    const events = await db.event.findMany({ include: { createdBy: true } });
 
     res.status(200).json(new ApiResponse(200, events, "Fetched all events"));
   } catch (error) {
-    res.status(400).json(new ApiError(400, "Error fetching events"));
+    res.status(400).json(new ApiError(400, "Error fetching events", error));
   }
 };
 
+// Get Event By ID
 export const getEventById = async (req: Request, res: Response) => {
+  const { success, data } = eventIdSchema.safeParse(req.params);
+
+  if (!success) {
+    res.status(400).json(new ApiError(400, "Invalid event ID"));
+    return;
+  }
+
   try {
-    const { id } = req.params;
     const event = await db.event.findUnique({
-      where: { id },
-      include: {
-        createdBy: true,
-      },
+      where: { id: data.id },
+      include: { createdBy: true },
     });
 
-    if (!event)
-      return res.status(404).json(new ApiError(404, "Event not found"));
+    if (!event) {
+      res.status(404).json(new ApiError(404, "Event not found"));
+      return;
+    }
 
     res
       .status(200)
       .json(new ApiResponse(200, event, "Event fetched successfully"));
   } catch (error) {
-    res.status(400).json(new ApiError(400, "Error fetching event"));
+    res.status(400).json(new ApiError(400, "Error fetching event", error));
   }
 };
-
+//update event
 export const updateEvent = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -85,16 +90,22 @@ export const updateEvent = async (req: Request, res: Response) => {
   }
 };
 
+// Delete Event
 export const deleteEvent = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
+  const { success, data } = eventIdSchema.safeParse(req.params);
 
-    await db.event.delete({ where: { id } });
+  if (!success) {
+    res.status(400).json(new ApiError(400, "Invalid event ID"));
+    return;
+  }
+
+  try {
+    await db.event.delete({ where: { id: data.id } });
 
     res
       .status(200)
       .json(new ApiResponse(200, null, "Event deleted successfully"));
   } catch (error) {
-    res.status(400).json(new ApiError(400, "Error deleting event"));
+    res.status(400).json(new ApiError(400, "Error deleting event", error));
   }
 };
