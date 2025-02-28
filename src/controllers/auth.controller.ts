@@ -3,18 +3,27 @@ import { googleOAuth2Client } from "../lib/config/google.config";
 import axios from "axios";
 import { ApiResponse } from "../utils/ApiResponse";
 import {
-  loginWithGoogleSchema,
+  sendOtpMailSchema,
+  loginWithOAuthSchema,
   refreshAccessTokenSchema,
+  verifyOtpSchema,
+  decodeOtpSchema,
+  logoutSchema,
 } from "../lib/schema/auth.schema";
 import { db } from "../lib/config/prisma.config";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../lib/env";
+import { generateOTP } from "../utils/otp";
+import { transporter } from "../utils/email";
+import { getEmailContent } from "../utils/emailTemplate";
+import { profileLists } from "../lib/lists/profile.lists";
+import { nameLists } from "../lib/lists/name.lists";
 
 export const loginWithGoogle = async (req: Request, res: Response) => {
   const {
     success,
     data: { code },
-  } = loginWithGoogleSchema.safeParse(req.query);
+  } = loginWithOAuthSchema.safeParse(req.query);
 
   if (!success) {
     res
@@ -65,7 +74,6 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
       new ApiResponse(
         200,
         {
-          user,
           accessToken: "Bearer " + accessToken,
         },
         "Successfully logged in with Google"
@@ -79,11 +87,23 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
   }
 };
 
-export const loginWithGithub = async (req, res) => {
-  const { code } = req.query;
+export const loginWithGithub = async (req: Request, res: Response) => {
+  const {
+    success,
+    data: { code },
+  } = loginWithOAuthSchema.safeParse(req.query);
+
+  if (!success) {
+    res
+      .status(400)
+      .json(new ApiResponse(400, null, "Invalid query parameters provided"));
+
+    return;
+  }
 
   if (!code) {
-    return res.status(400).json(new ApiResponse(400, null, "Invalid code"));
+    res.status(400).json(new ApiResponse(400, null, "Invalid code"));
+    return;
   }
 
   try {
@@ -147,7 +167,6 @@ export const loginWithGithub = async (req, res) => {
       new ApiResponse(
         200,
         {
-          user,
           accessToken: "Bearer " + newAccessToken,
         },
         "Successfully logged in with Google"
@@ -159,11 +178,8 @@ export const loginWithGithub = async (req, res) => {
   }
 };
 
-export const refreshAccessToken = async (req: Request, res: Response) => {
-  const {
-    success,
-    data: { refreshToken },
-  } = refreshAccessTokenSchema.safeParse(req.body);
+export const sendOtpMail = async (req: Request, res: Response) => {
+  const { success, data } = sendOtpMailSchema.safeParse(req.query);
 
   if (!success) {
     res.status(400).json(new ApiResponse(400, null, "Invalid request body"));
@@ -172,10 +188,159 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
   }
 
   try {
-    const decoded = jwt.verify(refreshToken, JWT_SECRET) as {
+    const { email } = data;
+
+    const otp = await generateOTP();
+
+    const expiresAt = Math.floor(Date.now() / 1000) + 60;
+
+    const token = jwt.sign({ email, otp, exp: expiresAt }, JWT_SECRET);
+
+    const mailContent = getEmailContent(otp);
+
+    await transporter.sendMail({
+      from: process.env.GOOGLE_EMAIL_USER,
+      to: email,
+      subject: "OTP for login",
+      html: mailContent,
+    });
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          token,
+          expiresAt,
+          email,
+        },
+        "OTP sent to email"
+      )
+    );
+  } catch (error) {
+    console.log("LOGIN WITH EMAIL ERROR: ", error);
+    res.status(500).json(new ApiResponse(500, null, "An error occurred"));
+  }
+};
+
+export const verifyOtp = async (req: Request, res: Response) => {
+  const { success, data } = verifyOtpSchema.safeParse(req.body);
+
+  if (!success) {
+    res.status(400).json(new ApiResponse(400, null, "Invalid request body"));
+    return;
+  }
+
+  const { email, otp, token } = data;
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as {
+      email: string;
+      otp: string;
+      exp: number;
+    };
+
+    console.log("VERIFY DECODED: ", decoded);
+
+    const { success, data: decodedData } = decodeOtpSchema.safeParse(decoded);
+
+    if (!success) {
+      res.status(400).json(new ApiResponse(400, null, "Invalid token"));
+      return;
+    }
+
+    console.log("VALID DECODED");
+
+    if (otp !== decodedData.otp) {
+      res.status(400).json(new ApiResponse(400, null, "Invalid OTP"));
+      return;
+    }
+
+    console.log("OTP MATCHED");
+
+    if (email !== decodedData.email) {
+      res.status(400).json(new ApiResponse(400, null, "Invalid email"));
+      return;
+    }
+
+    console.log("EMAIL MATCHED");
+
+    if (decodedData.exp < Math.floor(Date.now() / 1000)) {
+      res.status(403).json(new ApiResponse(400, null, "OTP expired"));
+      return;
+    }
+
+    console.log("OTP NOT EXPIRED");
+
+    let user = await db.user.findUnique({
+      where: {
+        email,
+      },
+    });
+
+    if (!user) {
+      const refreshToken = jwt.sign({ email }, JWT_SECRET, {
+        expiresIn: "30d",
+      });
+
+      const randomProfile = Math.floor(Math.random() * profileLists.length);
+      const randomName = Math.floor(Math.random() * nameLists.length);
+
+      user = await db.user.create({
+        data: {
+          email,
+          name: nameLists[randomName],
+          imageUrl: profileLists[randomProfile],
+          role: "User",
+          refreshToken: refreshToken,
+        },
+      });
+    }
+
+    const payload = {
+      id: user.id,
+      email: user.email,
+    };
+
+    const accessToken = jwt.sign(payload, JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          accessToken: "Bearer " + accessToken,
+        },
+        "Successfully logged in"
+      )
+    );
+  } catch (error) {
+    console.error("VERIFY OTP ERROR: ", error);
+    res.status(403).json(new ApiResponse(403, null, "Invalid OTP"));
+  }
+};
+
+export const refreshAccessToken = async (req: Request, res: Response) => {
+  const { success, data } = refreshAccessTokenSchema.safeParse(req.body);
+
+  if (!success) {
+    res.status(400).json(new ApiResponse(400, null, "Invalid request body"));
+
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(data.accessToken, JWT_SECRET) as {
       id: string;
       email: string;
+      iat: number;
+      exp: number;
     };
+
+    if (decoded.exp < Math.floor(Date.now() / 1000)) {
+      res.status(403).json(new ApiResponse(403, null, "Access token expired"));
+      return;
+    }
 
     const user = await db.user.findUnique({
       where: { id: decoded.id },
@@ -183,18 +348,15 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
 
     if (!user) {
       res.status(401).json(new ApiResponse(401, null, "User not found"));
-
       return;
     }
 
-    const accessToken = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-      },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const payload = {
+      id: user.id,
+      email: user.email,
+    };
+
+    const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
 
     res
       .status(200)
@@ -202,5 +364,55 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("REFRESH TOKEN ERROR: ", error);
     res.status(403).json(new ApiResponse(403, null, "Invalid refresh token"));
+  }
+};
+
+export const logout = async (req: Request, res: Response) => {
+  const { success, data } = logoutSchema.safeParse(req.body);
+  const userId = req.userId;
+
+  if (!success) {
+    res.status(400).json(new ApiResponse(400, null, "Invalid request body"));
+    return;
+  }
+
+  try {
+    const { accessToken } = data;
+
+    const decoded = jwt.verify(accessToken, JWT_SECRET) as {
+      email: string;
+      id: string;
+      iat: number;
+      exp: number;
+    };
+
+    console.log("DOCODED ID: ", decoded.id);
+    console.log("USER ID: ", userId);
+
+    if (decoded.id !== userId) {
+      res.status(403).json(new ApiResponse(403, null, "Invalid user"));
+      return;
+    }
+
+    if (decoded.exp < Math.floor(Date.now() / 1000)) {
+      res.status(403).json(new ApiResponse(403, null, "Refresh token expired"));
+      return;
+    }
+
+    await db.user.update({
+      where: {
+        id: decoded.id,
+      },
+      data: {
+        refreshToken: "",
+      },
+    });
+
+    res.status(200).json(new ApiResponse(200, null, "Logged out successfully"));
+  } catch (error) {
+    console.error("LOGOUT ERROR: ", error);
+    res
+      .status(500)
+      .json(new ApiResponse(500, null, "An error occurred  while logging out"));
   }
 };
