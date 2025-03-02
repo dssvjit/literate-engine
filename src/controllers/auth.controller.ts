@@ -1,5 +1,4 @@
 import { Request, Response } from "express";
-import { googleOAuth2Client } from "../lib/config/google.config";
 import axios from "axios";
 import { ApiResponse } from "../utils/ApiResponse";
 import {
@@ -29,34 +28,58 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
     res
       .status(400)
       .json(new ApiResponse(400, null, "Invalid query parameters provided"));
+    return;
+  }
 
+  if (!code) {
+    res.status(400).json(new ApiResponse(400, null, "Invalid code"));
     return;
   }
 
   try {
-    const { tokens } = await googleOAuth2Client.getToken(code);
-    googleOAuth2Client.setCredentials(tokens);
-
-    const { data } = await axios.get(
-      `https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${tokens.access_token}`
+    const tokenResponse = await axios.post(
+      "https://oauth2.googleapis.com/token",
+      {
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        code,
+        redirect_uri: process.env.GOOGLE_AUTH_REDIRECT_URL,
+        grant_type: "authorization_code",
+      }
     );
 
-    const { email, name, picture } = data;
+    const accessToken = tokenResponse.data.access_token as string;
+
+    const userResponse = await axios.get(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!userResponse.data) {
+      res.status(400).json(new ApiResponse(400, null, "Invalid user data"));
+      return;
+    }
+
+    const { name, email, picture } = userResponse.data;
 
     let user = await db.user.findUnique({
-      where: {
-        email,
-      },
+      where: { email },
     });
 
     if (!user) {
+      const refreshToken = jwt.sign({ email }, JWT_SECRET, {
+        expiresIn: "30d",
+      });
+
       user = await db.user.create({
         data: {
           email,
           name,
           imageUrl: picture,
           role: "User",
-          refreshToken: tokens.refresh_token,
+          refreshToken: refreshToken,
         },
       });
     }
@@ -66,7 +89,7 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
       email,
     };
 
-    const accessToken = jwt.sign(payload, JWT_SECRET, {
+    const newAccessToken = jwt.sign(payload, JWT_SECRET, {
       expiresIn: "7d",
     });
 
@@ -74,16 +97,14 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
       new ApiResponse(
         200,
         {
-          accessToken: "Bearer " + accessToken,
+          accessToken: "Bearer " + newAccessToken,
         },
         "Successfully logged in with Google"
       )
     );
   } catch (error) {
     console.log("LOGIN WITH GOOGLE ERROR: ", error);
-    res
-      .status(500)
-      .json(new ApiResponse(500, null, "An error occurred while logging in"));
+    res.status(500).json(new ApiResponse(500, null, "An error occurred"));
   }
 };
 
@@ -92,6 +113,8 @@ export const loginWithGithub = async (req: Request, res: Response) => {
     success,
     data: { code },
   } = loginWithOAuthSchema.safeParse(req.query);
+
+  console.log("GITHUB LOGIN CODE: ", code);
 
   if (!success) {
     res
