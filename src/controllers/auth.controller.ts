@@ -262,8 +262,6 @@ export const verifyOtp = async (req: Request, res: Response) => {
       exp: number;
     };
 
-    console.log("VERIFY DECODED: ", decoded);
-
     const { success, data: decodedData } = decodeOtpSchema.safeParse(decoded);
 
     if (!success) {
@@ -391,51 +389,20 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
 };
 
 export const logout = async (req: Request, res: Response) => {
-  const { success, data } = logoutSchema.safeParse(req.body);
-  const userId = req.userId;
-
-  if (!success) {
-    res.status(400).json(new ApiResponse(400, null, "Invalid request body"));
-    return;
-  }
-
   try {
-    const { accessToken } = data;
-
-    const decoded = jwt.verify(accessToken, JWT_SECRET) as {
-      email: string;
-      id: string;
-      iat: number;
-      exp: number;
-    };
-
-    console.log("DOCODED ID: ", decoded.id);
-    console.log("USER ID: ", userId);
-
-    if (decoded.id !== userId) {
-      res.status(403).json(new ApiResponse(403, null, "Invalid user"));
-      return;
-    }
-
-    if (decoded.exp < Math.floor(Date.now() / 1000)) {
-      res.status(403).json(new ApiResponse(403, null, "Refresh token expired"));
+    if (!req.userId) {
+      res.status(401).json(new ApiResponse(401, null, "Unauthorized"));
       return;
     }
 
     await db.user.update({
-      where: {
-        id: decoded.id,
-      },
-      data: {
-        refreshToken: "",
-      },
+      where: { id: req.userId },
+      data: { refreshToken: null },
     });
 
     res.status(200).json(new ApiResponse(200, null, "Logged out successfully"));
   } catch (error) {
     console.error("LOGOUT ERROR: ", error);
-    res
-      .status(500)
-      .json(new ApiResponse(500, null, "An error occurred  while logging out"));
+    res.status(500).json(new ApiResponse(500, null, "Internal server error"));
   }
 };
