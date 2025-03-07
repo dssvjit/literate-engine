@@ -28,3 +28,8 @@ export const refreshAccessTokenSchema = z.object({
 export const logoutSchema = z.object({
   accessToken: z.string().nonempty(),
 });
+
+export const adminLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string(),
+});
