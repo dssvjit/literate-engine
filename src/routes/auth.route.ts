@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  adminLogin,
   loginWithGithub,
   loginWithGoogle,
   logout,
@@ -17,5 +18,6 @@ authRouter.get("/github", loginWithGithub);
 authRouter.get("/email/otp", sendOtpMail);
 authRouter.post("/email/otp/verify", verifyOtp);
 authRouter.put("/logout", authenticateJWT, logout);
+authRouter.post("/admin", adminLogin);
 
 export default authRouter;

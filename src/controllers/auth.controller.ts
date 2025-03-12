@@ -7,11 +7,11 @@ import {
   refreshAccessTokenSchema,
   verifyOtpSchema,
   decodeOtpSchema,
-  logoutSchema,
+  adminLoginSchema,
 } from "../lib/schema/auth.schema";
 import { db } from "../lib/config/prisma.config";
 import jwt from "jsonwebtoken";
-import { JWT_SECRET } from "../lib/env";
+import { ADMIN_EMAIL, ADMIN_PASSWORD, JWT_SECRET } from "../lib/env";
 import { generateOTP } from "../utils/otp";
 import { transporter } from "../utils/email";
 import { getEmailContent } from "../utils/emailTemplate";
@@ -113,8 +113,6 @@ export const loginWithGithub = async (req: Request, res: Response) => {
     success,
     data: { code },
   } = loginWithOAuthSchema.safeParse(req.query);
-
-  console.log("GITHUB LOGIN CODE: ", code);
 
   if (!success) {
     res
@@ -269,28 +267,20 @@ export const verifyOtp = async (req: Request, res: Response) => {
       return;
     }
 
-    console.log("VALID DECODED");
-
     if (otp !== decodedData.otp) {
       res.status(400).json(new ApiResponse(400, null, "Invalid OTP"));
       return;
     }
-
-    console.log("OTP MATCHED");
 
     if (email !== decodedData.email) {
       res.status(400).json(new ApiResponse(400, null, "Invalid email"));
       return;
     }
 
-    console.log("EMAIL MATCHED");
-
     if (decodedData.exp < Math.floor(Date.now() / 1000)) {
       res.status(403).json(new ApiResponse(400, null, "OTP expired"));
       return;
     }
-
-    console.log("OTP NOT EXPIRED");
 
     let user = await db.user.findUnique({
       where: {
@@ -403,6 +393,69 @@ export const logout = async (req: Request, res: Response) => {
     res.status(200).json(new ApiResponse(200, null, "Logged out successfully"));
   } catch (error) {
     console.error("LOGOUT ERROR: ", error);
+    res.status(500).json(new ApiResponse(500, null, "Internal server error"));
+  }
+};
+
+export const adminLogin = async (req: Request, res: Response) => {
+  const { success, data } = adminLoginSchema.safeParse(req.body);
+
+  if (!success) {
+    res.status(400).json(new ApiResponse(400, null, "Invalid request body"));
+    return;
+  }
+
+  try {
+    const { email, password } = data;
+
+    if (email !== ADMIN_EMAIL) {
+      console.log("email: ", email);
+      res.status(401).json(new ApiResponse(401, null, "Unauthorized"));
+      return;
+    }
+
+    if (password !== ADMIN_PASSWORD) {
+      console.log("password: ", password);
+      res.status(401).json(new ApiResponse(401, null, "Unauthorized"));
+      return;
+    }
+
+    const refreshToken = jwt.sign({ email }, JWT_SECRET, {
+      expiresIn: "30d",
+    });
+
+    let user = await db.user.update({
+      where: {
+        email,
+        role: "Admin",
+      },
+      data: {
+        refreshToken,
+      },
+    });
+
+    const payload = {
+      id: user.id,
+      email: user.email,
+    };
+
+    const accessToken = jwt.sign(payload, JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          accessToken: "Bearer " + accessToken,
+        },
+        "Successfully logged in"
+      )
+    );
+
+    return;
+  } catch (error) {
+    console.error("ADMIN LOGIN ERROR: ", error);
     res.status(500).json(new ApiResponse(500, null, "Internal server error"));
   }
 };
