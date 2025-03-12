@@ -4,10 +4,12 @@
   "main": "src/index.ts",
   "scripts": {
     "start": "node dist/app.js",
-    "build": "tsc -b",
     "watch": "tsc -w",
     "server": "nodemon dist/app.js",
-    "dev": "concurrently \"npm run watch\" \"npm run server\""
+    "dev": "concurrently \"npm run watch\" \"npm run server\"",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate deploy",
+    "build": "npm run prisma:generate && npm run prisma:migrate && tsc -b"
   },
   "keywords": [],
   "author": "",
