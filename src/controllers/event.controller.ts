@@ -2,99 +2,142 @@ import { Request, Response } from "express";
 import { db } from "../lib/config/prisma.config";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
+import {
+  createParticipantSchema,
+  createSchema,
+  getIfUserRegisteredSchema,
+} from "../lib/schema/event.schema";
 
-export const createEvent = async (req: Request, res: Response) => {
+export const create = async (req: Request, res: Response) => {
+  const { success, data } = createSchema.safeParse(req.body);
+
+  if (!success) {
+    res.status(400).json(new ApiError(400, "Invalid event data"));
+    return;
+  }
+
   try {
-    const { name, description, venue, date, mode, userId } = req.body;
+    const { name, description, date, image } = data;
 
-    const event = await db.event.create({
+    await db.event.create({
       data: {
         name,
         description,
-        venue,
-        date: new Date(date),
-        mode,
-        userId,
-      },
-      include: {
-        createdBy: true,
+        date,
+        image,
       },
     });
 
     res
       .status(201)
-      .json(new ApiResponse(201, event, "Event created successfully"));
+      .json(new ApiResponse(201, {}, "Event created successfully"));
+    return;
   } catch (error) {
+    console.log("ERROR: ", error);
     res.status(400).json(new ApiError(400, "Error creating event"));
+    return;
   }
 };
 
 export const getAllEvents = async (_req: Request, res: Response) => {
   try {
     const events = await db.event.findMany({
-      include: {
-        createdBy: true,
+      select: {
+        id: true,
+        image: true,
+        date: true,
+        description: true,
+        name: true,
       },
     });
 
     res.status(200).json(new ApiResponse(200, events, "Fetched all events"));
   } catch (error) {
-    res.status(400).json(new ApiError(400, "Error fetching events"));
+    res.status(400).json(new ApiError(400, "Error fetching events", error));
   }
 };
 
-export const getEventById = async (req: Request, res: Response) => {
+export const createParticipant = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  const { success, data } = createParticipantSchema.safeParse(req.query);
+
+  if (!success) {
+    res.status(400).json(new ApiError(400, "Invalid participant data"));
+    return;
+  }
+
   try {
-    const { id } = req.params;
+    const { eventId } = data;
+
     const event = await db.event.findUnique({
-      where: { id },
-      include: {
-        createdBy: true,
+      where: {
+        id: eventId,
       },
     });
 
-    if (!event)
-      return res.status(404).json(new ApiError(404, "Event not found"));
+    if (!event) {
+      res.status(404).json(new ApiError(404, "Event not found"));
+      return;
+    }
 
-    res
-      .status(200)
-      .json(new ApiResponse(200, event, "Event fetched successfully"));
-  } catch (error) {
-    res.status(400).json(new ApiError(400, "Error fetching event"));
-  }
-};
-
-export const updateEvent = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { name, description, venue, date, mode, userId } = req.body;
-
-    const updatedEvent = await db.event.update({
-      where: { id },
-      data: { name, description, venue, date: new Date(date), mode, userId },
-      include: {
-        createdBy: true,
+    await db.eventParticipant.create({
+      data: {
+        eventId,
+        userId,
       },
     });
 
     res
-      .status(200)
-      .json(new ApiResponse(200, updatedEvent, "Event updated successfully"));
+      .status(201)
+      .json(new ApiResponse(201, {}, "Participant created successfully"));
   } catch (error) {
-    res.status(400).json(new ApiError(400, "Error updating event"));
+    console.log("CREATE PARTICIPANT ERROR: ", error);
+    res.status(400).json(new ApiError(400, "Error creating participant"));
   }
 };
 
-export const deleteEvent = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
+export const getIfUserRegistered = async (req: Request, res: Response) => {
+  const userId = req.userId;
 
-    await db.event.delete({ where: { id } });
+  const { success, data } = getIfUserRegisteredSchema.safeParse(req.query);
+
+  if (!success) {
+    res.status(400).json(new ApiError(400, "Invalid participant data"));
+    return;
+  }
+
+  try {
+    const { eventId } = data;
+
+    const event = await db.eventParticipant.findMany({
+      where: {
+        userId,
+        eventId,
+      },
+    });
+
+    if (event.length === 0) {
+      res
+        .status(203)
+        .json(
+          new ApiResponse(203, { isParticipant: false }, "User not participant")
+        );
+      return;
+    }
 
     res
       .status(200)
-      .json(new ApiResponse(200, null, "Event deleted successfully"));
+      .json(
+        new ApiResponse(
+          200,
+          { isParticipant: true },
+          "User is participant in event"
+        )
+      );
   } catch (error) {
-    res.status(400).json(new ApiError(400, "Error deleting event"));
+    res
+      .status(400)
+      .json(new ApiError(400, "Error fetching registered events", error));
   }
 };

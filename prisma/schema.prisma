@@ -7,38 +7,45 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  imageUrl     String?
-  refreshToken String?
-  role         Role
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  events       Event[]
-  blogs        Blog[]
-}
-
 enum Role {
   User
   Admin
 }
 
-model Event {
-  id          String   @id @default(uuid())
-  name        String
-  description String
-  venue       String
-  date        DateTime
-  mode        Mode
-  createdBy   User     @relation(fields: [userId], references: [id])
-  userId      String
+model User {
+  id                 String             @id @default(uuid())
+  name               String
+  email              String             @unique
+  imageUrl           String?
+  refreshToken       String?
+  role               Role
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  blogs              Blog[]
+  participatedEvents EventParticipant[]
 }
 
-enum Mode {
-  Online
-  Offline
+model Event {
+  id          String @id @default(uuid())
+  name        String
+  description String
+  image       String
+  date        String
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  eventParticipant EventParticipant[]
+}
+
+model EventParticipant {
+  id      String @id @default(uuid())
+  eventId String
+  userId  String
+  event   Event  @relation(fields: [eventId], references: [id])
+  user    User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Blog {

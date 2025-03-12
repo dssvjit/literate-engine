@@ -4,23 +4,24 @@
   "main": "src/index.ts",
   "scripts": {
     "start": "node dist/app.js",
-    "build": "tsc -b",
     "watch": "tsc -w",
     "server": "nodemon dist/app.js",
-    "dev": "concurrently \"npm run watch\" \"npm run server\""
+    "dev": "concurrently \"npm run watch\" \"npm run server\"",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate deploy",
+    "build": "npm run prisma:generate && npm run prisma:migrate && tsc -b"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "@types/bcrypt": "^5.0.2",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cookie-parser": "^1.4.8",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.8",
     "@types/node": "^22.13.4",
+    "@types/nodemailer": "^6.4.17",
+    "@types/randomstring": "^1.3.0",
     "concurrently": "^9.1.2",
     "nodemon": "^3.1.9",
     "prisma": "^6.4.1",
@@ -31,13 +32,13 @@
   "dependencies": {
     "@prisma/client": "^6.4.1",
     "axios": "^1.7.9",
-    "bcryptjs": "^3.0.2",
-    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "googleapis": "^144.0.0",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.10.0",
+    "randomstring": "^1.3.1",
     "zod": "^3.24.2"
   }
 }

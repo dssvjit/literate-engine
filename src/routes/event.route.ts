@@ -1,18 +1,17 @@
 import { Router } from "express";
 import {
-  createEvent,
+  create,
+  createParticipant,
   getAllEvents,
-  getEventById,
-  updateEvent,
-  deleteEvent,
+  getIfUserRegistered,
 } from "../controllers/event.controller";
+import { authenticateJWT } from "../middlewares/auth.middleware";
 
 const eventRouter: Router = Router();
 
-eventRouter.post("/", createEvent);
-eventRouter.get("getAllEvents/", getAllEvents);
-eventRouter.get("getEvent/:id", getEventById as any);
-eventRouter.put("updatEvent/:id", updateEvent);
-eventRouter.delete("deleteEvent/:id", deleteEvent);
+eventRouter.post("", create);
+eventRouter.get("", getAllEvents);
+eventRouter.post("/register", authenticateJWT, createParticipant);
+eventRouter.get("/register", authenticateJWT, getIfUserRegistered);
 
 export default eventRouter;
